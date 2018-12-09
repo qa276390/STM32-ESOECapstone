@@ -47,7 +47,6 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
@@ -62,7 +61,6 @@ static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -70,31 +68,19 @@ static void MX_TIM3_Init(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+struct PIN{
+	GPIO_TypeDef *GPIO;
+	uint16_t PIN;
+};
+struct MAP{
+	TIM_HandleTypeDef* htim;
+	PIN TRIG;
+	PIN ECHO;
+};
 
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef* htim){
-	if(htim->Instance==TIM2 || htim->Instance==TIM3){
-		if((htim->Instance==TIM2 && HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0)==1) || (htim->Instance==TIM3 && HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_6)==1)){
-			__HAL_TIM_SET_COUNTER(htim,0);
-		}else{
-			int cnt=__HAL_TIM_GET_COUNTER(htim);
-			double distance=cnt/(double)58;
-			int integer=(int)distance;
-			int point=(int)((distance-integer)*100);
-			char tosend[20]={0};
-			if(htim->Instance==TIM2)
-			{	sprintf(tosend,"TIM2: %d.%02d\r\n", integer, point);}
-			if(htim->Instance==TIM3)
-			{	sprintf(tosend,"TIM3: %d.%02d\r\n", integer, point);}
-			HAL_UART_Transmit(&huart2,tosend,sizeof(tosend),0xffff);
-			HAL_TIM_Base_Start_IT(&htim1);
-		}
-	}
-}
-
-/*
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef* htim){
 	if(htim->Instance==TIM2){
-		if(HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0)==1){
+		if((htim->Channel==HAL_TIM_ACTIVE_CHANNEL_1 && HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0)==1) || (htim->Channel==HAL_TIM_ACTIVE_CHANNEL_2 && HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_3)==1)){
 			__HAL_TIM_SET_COUNTER(htim,0);
 		}else{
 			int cnt=__HAL_TIM_GET_COUNTER(htim);
@@ -102,27 +88,14 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef* htim){
 			int integer=(int)distance;
 			int point=(int)((distance-integer)*100);
 			char tosend[20]={0};
-			sprintf(tosend,"%d.%02d\r\n", integer, point);
+			sprintf(tosend,"%d: %d.%02d\r\n", htim->Channel, integer, point);
 			HAL_UART_Transmit(&huart2,tosend,sizeof(tosend),0xffff);
 			HAL_TIM_Base_Start_IT(&htim1);
 		}
 	}
-	if(htim->Instance==TIM3){
-			if(HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_6)==1){
-				__HAL_TIM_SET_COUNTER(htim,0);
-			}else{
-				int cnt=__HAL_TIM_GET_COUNTER(htim);
-				double distance=cnt/(double)58;
-				int integer=(int)distance;
-				int point=(int)((distance-integer)*100);
-				char tosend[20]={0};
-				sprintf(tosend,"%d.%02d\r\n", integer, point);
-				HAL_UART_Transmit(&huart2,tosend,sizeof(tosend),0xffff);
-				HAL_TIM_Base_Start_IT(&htim1);
-			}
-		}
 }
-*/
+
+
 
 int tim1Count=14000;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
@@ -188,10 +161,9 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM1_Init();
   MX_USART2_UART_Init();
-  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_IC_Start_IT(&htim2,TIM_CHANNEL_1);
-  HAL_TIM_IC_Start_IT(&htim3,TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&htim2,TIM_CHANNEL_2);
   HAL_TIM_Base_Start_IT(&htim1);
   /* USER CODE END 2 */
 
@@ -246,11 +218,10 @@ void SystemClock_Config(void)
   }
 
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM2|RCC_PERIPHCLK_TIM34;
+                              |RCC_PERIPHCLK_TIM2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim2ClockSelection = RCC_TIM2CLK_HCLK;
-  PeriphClkInit.Tim34ClockSelection = RCC_TIM34CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -337,38 +308,7 @@ static void MX_TIM2_Init(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
-}
-
-/* TIM3 init function */
-static void MX_TIM3_Init(void)
-{
-
-  TIM_MasterConfigTypeDef sMasterConfig;
-  TIM_IC_InitTypeDef sConfigIC;
-
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 7;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 0xffffffff;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_IC_Init(&htim3) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_BOTHEDGE;
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
-  sConfigIC.ICFilter = 0;
-  if (HAL_TIM_IC_ConfigChannel(&htim3, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -410,6 +350,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1|GPIO_PIN_7, GPIO_PIN_RESET);
